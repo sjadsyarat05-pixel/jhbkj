@@ -1,22 +1,29 @@
-// --- استيراد مكتبات Firebase ---
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js";
+// استيراد الدوال اللازمة من Firebase
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
+import { getDatabase, ref, set, push, onValue, update, remove, get, child } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
-// --- إعدادات Firebase ---
+// إعدادات المشروع الخاص بك
 const firebaseConfig = {
-    apiKey: "AIzaSyDRaDOfFByHlf5IHzkTmuF0m1odDs6AdCg",
-    authDomain: "alio-f07f8.firebaseapp.com",
-    databaseURL: "https://alio-f07f8-default-rtdb.firebaseio.com",
-    projectId: "alio-f07f8",
-    storageBucket: "alio-f07f8.firebasestorage.app",
-    messagingSenderId: "333304109654",
-    appId: "1:333304109654:web:c5ea55656963c4617f39f7",
-    measurementId: "G-3R125SL7RD"
+  apiKey: "AIzaSyASxglONJzsx3gh8rchr2He6CCzlZtTbUg",
+  authDomain: "ll-2ce76.firebaseapp.com",
+  projectId: "ll-2ce76",
+  storageBucket: "ll-2ce76.firebasestorage.app",
+  messagingSenderId: "786471601828",
+  appId: "1:786471601828:web:5fcee7031c7537eb63c831",
+  measurementId: "G-WM7PNBPF30"
 };
 
-// تهيئة Firebase
+// تهيئة التطبيق
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 const db = getDatabase(app);
+const auth = getAuth(app);
+
+window.db = db;
+window.auth = auth;
+console.log("Firebase Connected Successfully!");
 
 // --- إعدادات التطبيق ---
 const APP_PIN = "123321";
