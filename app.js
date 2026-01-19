@@ -37,21 +37,47 @@ let currentState = {
 };
 let currentCustomerViewId = null;
 let selectedCustomerIdForPay = null;
-let selectedImagesForPrint = new Set(); // لتخزين الصور المختارة للطباعة
+let selectedImagesForPrint = new Set();
 let currentEditingCustomerId = null;
 
 // --- عند التشغيل ---
 document.addEventListener('DOMContentLoaded', () => {
+    // 1. محاولة تحميل مبدئي من LocalStorage للسرعة
     const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (localData) {
-        currentState = JSON.parse(localData);
-        updateUI();
+        try {
+            currentState = JSON.parse(localData);
+            updateUI();
+        } catch (e) { console.error("Error parsing local data", e); }
     }
-    setupRealtimeListener();
+
+    // 2. التحميل الحقيقي من Firebase (أهم خطوة)
+    setupRealtimeListener(); // استماع للتغييرات
+    loadDataFromFirebase();  // جلب البيانات مرة واحدة عند الفتح
+
+    // 3. حالة الشبكة
     updateOnlineStatus();
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
 });
+
+// دالة جديدة لجلب البيانات فوراً عند الفتح
+function loadDataFromFirebase() {
+    const dbRef = ref(db);
+    get(child(dbRef, `debt_system_data`)).then((snapshot) => {
+        if (snapshot.exists()) {
+            console.log("Data loaded from Firebase");
+            currentState = snapshot.val();
+            if (!currentState.customers) currentState.customers = [];
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentState));
+            updateUI();
+        } else {
+            console.log("No data available in Firebase");
+        }
+    }).catch((error) => {
+        console.error("Firebase Get Error:", error);
+    });
+}
 
 function setupRealtimeListener() {
     const dbRef = ref(db, 'debt_system_data');
@@ -64,7 +90,7 @@ function setupRealtimeListener() {
             updateUI();
         }
     }, (error) => {
-        console.error("Firebase Error:", error);
+        console.error("Firebase Realtime Error:", error);
     });
 }
 
@@ -81,6 +107,8 @@ function updateOnlineStatus() {
     if (navigator.onLine) {
         statusEl.className = 'status-indicator online';
         if(syncText) syncText.innerText = "✅ متصل بالسحابة (Online)";
+        // محاولة مزامنة إذا عاد الاتصال
+        loadDataFromFirebase();
     } else {
         statusEl.className = 'status-indicator offline';
         if(syncText) syncText.innerText = "⚠️ وضع عدم الاتصال (Offline)";
@@ -148,10 +176,21 @@ function showPage(pageId) {
     if(pageId === 'payments') renderPaymentClients();
 }
 
+// دالة الحفظ المعدلة لضمان الإرسال لفايربيس
 function saveData() {
+    // 1. حفظ محلي
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentState));
+    
+    // 2. حفظ سحابي
     if (navigator.onLine) {
-        set(ref(db, 'debt_system_data'), currentState).catch(console.error);
+        set(ref(db, 'debt_system_data'), currentState)
+            .then(() => console.log("Data saved to Firebase successfully"))
+            .catch((err) => {
+                console.error("Cloud Save Error", err);
+                alert("خطأ في الحفظ السحابي: " + err.message);
+            });
+    } else {
+        console.warn("Offline: Data saved locally only.");
     }
 }
 
@@ -162,7 +201,7 @@ function showToast(msg) {
     setTimeout(() => { x.className = x.className.replace("show", ""); }, 3000);
 }
 
-// --- إضافة زبون جديد (مع صور) ---
+// --- إضافة زبون جديد ---
 async function addCustomer() {
     const name = document.getElementById('cust-name').value;
     const car = document.getElementById('cust-car').value;
@@ -181,7 +220,6 @@ async function addCustomer() {
 
     showLoader(true);
 
-    // رفع الصور
     let uploadedImages = [];
     if (imageInput.files.length > 0) {
         for (let file of imageInput.files) {
@@ -201,7 +239,7 @@ async function addCustomer() {
         remaining: total - paid,
         checkedBy: checker,
         notes: notes,
-        images: uploadedImages, // تخزين الروابط
+        images: uploadedImages,
         createdAt: new Date().toISOString(),
         payments: []
     };
@@ -218,11 +256,10 @@ async function addCustomer() {
     if (!currentState.customers) currentState.customers = [];
     currentState.customers.push(newCustomer);
     
-    saveData();
+    saveData(); // الحفظ هنا مهم
     showLoader(false);
     showToast("تمت الإضافة بنجاح ✅");
     
-    // تنظيف
     document.getElementById('cust-name').value = '';
     document.getElementById('cust-car').value = '';
     document.getElementById('cust-phone').value = '';
@@ -277,7 +314,6 @@ function loadCustomerDetails(id) {
     const payments = customer.payments || [];
     const curr = customer.currency || 'IQD';
 
-    // عرض الصور في التفاصيل
     let imagesHtml = '';
     if (customer.images && customer.images.length > 0) {
         imagesHtml = `<div style="display:flex; gap:10px; overflow-x:auto; margin-top:10px; padding-bottom:5px;">
@@ -324,7 +360,7 @@ function loadCustomerDetails(id) {
     showPage('details');
 }
 
-// --- قسم التسديد والطباعة (المعدل) ---
+// --- قسم التسديد والطباعة ---
 function renderPaymentClients() {
     const list = document.getElementById('payment-clients-list');
     const query = document.getElementById('search-payment-client').value.toLowerCase();
@@ -352,7 +388,7 @@ function renderPaymentClients() {
 
 function openPaymentModal(id) {
     selectedCustomerIdForPay = id;
-    selectedImagesForPrint = new Set(); // تصفير التحديد
+    selectedImagesForPrint = new Set();
     const c = currentState.customers.find(x => x.id === id);
     const curr = c.currency || 'IQD';
     
@@ -361,7 +397,6 @@ function openPaymentModal(id) {
         الباقي الحالي: <span style="color:var(--danger)">${formatMoney(c.remaining, curr)}</span>
     `;
     
-    // إعادة تعيين الواجهة
     document.getElementById('payment-inputs-area').classList.remove('hidden');
     document.getElementById('print-options-area').classList.add('hidden');
     document.getElementById('pay-amount').value = '';
@@ -404,7 +439,6 @@ function submitPayment() {
     showToast("تم حفظ التسديد 💰");
     renderPaymentClients();
     
-    // التحول لوضع الطباعة بدلاً من إغلاق النافذة
     setupPrintModeInModal(c);
 }
 
@@ -441,10 +475,9 @@ function executePrint() {
     if (!customer) return;
 
     const curr = customer.currency || 'IQD';
-    const lastPayment = customer.payments[customer.payments.length - 1]; // آخر تسديد تم حفظه الآن
+    const lastPayment = customer.payments[customer.payments.length - 1]; 
     const printArea = document.getElementById('print-area');
     
-    // تحضير الصور المختارة
     let imagesHtml = '';
     if (selectedImagesForPrint.size > 0) {
         imagesHtml = `<div class="print-images-area">
@@ -454,7 +487,6 @@ function executePrint() {
         </div>`;
     }
 
-    // تصميم ورقة الطباعة
     printArea.innerHTML = `
         <div class="invoice-header">
             <h2>وصل تسديد نقد</h2>
@@ -510,7 +542,7 @@ function executePrint() {
     closePaymentModal();
 }
 
-// --- نظام التعديل الجديد ---
+// --- نظام التعديل ---
 function openEditModal() {
     if (!currentCustomerViewId) return;
     const customer = currentState.customers.find(c => c.id === currentCustomerViewId);
@@ -518,7 +550,6 @@ function openEditModal() {
 
     currentEditingCustomerId = customer.id;
 
-    // ملء البيانات
     document.getElementById('edit-name').value = customer.name;
     document.getElementById('edit-car').value = customer.carName;
     document.getElementById('edit-phone').value = customer.whatsapp;
@@ -527,7 +558,6 @@ function openEditModal() {
     document.getElementById('edit-notes').value = customer.notes;
     document.getElementById('edit-new-images').value = '';
 
-    // عرض الصور الحالية للحذف
     const imgContainer = document.getElementById('edit-images-list');
     imgContainer.innerHTML = '';
     if (customer.images) {
@@ -550,7 +580,7 @@ window.deleteImageFromEdit = function(urlToDelete) {
     const customer = currentState.customers.find(c => c.id === currentEditingCustomerId);
     if(customer && customer.images) {
         customer.images = customer.images.filter(url => url !== urlToDelete);
-        openEditModal(); // إعادة رسم المودال
+        openEditModal(); 
     }
 };
 
@@ -558,7 +588,6 @@ async function saveEditCustomer() {
     const customer = currentState.customers.find(c => c.id === currentEditingCustomerId);
     if (!customer) return;
 
-    // تحديث البيانات النصية
     customer.name = document.getElementById('edit-name').value;
     customer.carName = document.getElementById('edit-car').value;
     customer.whatsapp = document.getElementById('edit-phone').value;
@@ -566,10 +595,8 @@ async function saveEditCustomer() {
     customer.paidTotal = parseFloat(document.getElementById('edit-paid').value) || 0;
     customer.notes = document.getElementById('edit-notes').value;
     
-    // إعادة حساب المتبقي
     customer.remaining = customer.totalDebt - customer.paidTotal;
 
-    // رفع صور جديدة إن وجدت
     const newImagesInput = document.getElementById('edit-new-images');
     if (newImagesInput.files.length > 0) {
         showLoader(true);
@@ -586,7 +613,7 @@ async function saveEditCustomer() {
     saveData();
     document.getElementById('edit-modal').classList.add('hidden');
     showToast("تم تعديل البيانات بنجاح ✏️");
-    loadCustomerDetails(currentEditingCustomerId); // تحديث الواجهة
+    loadCustomerDetails(currentEditingCustomerId); 
 }
 
 function deleteCustomerConfirm() {
@@ -614,8 +641,8 @@ function formatMoney(amount, currency = 'IQD') {
 
 function forceSync() {
     if(navigator.onLine) {
-        saveData();
-        showToast("جاري المزامنة...");
+        loadDataFromFirebase();
+        showToast("جاري المزامنة مع السحابة...");
     } else {
         alert("لا يوجد إنترنت");
     }
