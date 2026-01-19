@@ -62,6 +62,12 @@
                     <input type="tel" id="cust-phone" placeholder="077...">
                 </div>
                 
+                <h3><i class="fas fa-images"></i> صور ومستمسكات</h3>
+                <div class="form-group">
+                    <label>رفع صور (يمكن تحديد أكثر من صورة)</label>
+                    <input type="file" id="cust-images" multiple accept="image/*" class="file-input-custom">
+                </div>
+
                 <h3><i class="fas fa-coins"></i> تفاصيل المبلغ</h3>
                 
                 <div class="form-group">
@@ -91,7 +97,7 @@
                     <label>ملاحظات إضافية</label>
                     <textarea id="cust-notes" rows="3"></textarea>
                 </div>
-                <button class="btn btn-success full-width" onclick="addCustomer()">حفظ البيانات</button>
+                <button id="btn-add-customer" class="btn btn-success full-width" onclick="addCustomer()">حفظ البيانات</button>
             </div>
         </section>
 
@@ -116,22 +122,34 @@
                     <h3>إدارة الحساب</h3>
                     <p id="pay-modal-info" class="modal-subtitle"></p>
                     
-                    <div class="form-group">
-                        <label>مبلغ التسديد</label>
-                        <input type="number" id="pay-amount" min="1" step="any" placeholder="أدخل المبلغ هنا">
+                    <div id="payment-inputs-area">
+                        <div class="form-group">
+                            <label>مبلغ التسديد</label>
+                            <input type="number" id="pay-amount" min="1" step="any" placeholder="أدخل المبلغ هنا">
+                        </div>
+                        <div class="form-group">
+                            <label>ملاحظة</label>
+                            <input type="text" id="pay-note" placeholder="مثال: قسط شهري">
+                        </div>
+                        
+                        <button class="btn btn-primary full-width mb-10" onclick="submitPayment()">
+                            <i class="fas fa-save"></i> حفظ التسديد
+                        </button>
                     </div>
-                    <div class="form-group">
-                        <label>ملاحظة</label>
-                        <input type="text" id="pay-note" placeholder="مثال: قسط شهري">
+
+                    <div id="print-options-area" class="hidden">
+                        <div class="alert-success mb-10">تم حفظ التسديد بنجاح!</div>
+                        
+                        <h4 style="color:#fff; margin-bottom:5px">تحديد صور للطباعة (اختياري):</h4>
+                        <div id="payment-images-container" class="image-select-grid"></div>
+                        
+                        <button class="btn btn-secondary full-width mt-10" onclick="executePrint()">
+                            <i class="fas fa-print"></i> طباعة الفاتورة والصور
+                        </button>
+                        <button class="btn btn-danger full-width mt-10" onclick="closePaymentModal()">
+                            إغلاق
+                        </button>
                     </div>
-                    
-                    <button class="btn btn-primary full-width mb-10" onclick="submitPayment()">
-                        <i class="fas fa-save"></i> حفظ التسديد
-                    </button>
-                    
-                    <button class="btn btn-secondary full-width" onclick="openPrintModalFromPayment()">
-                        <i class="fas fa-print"></i> طباعة كشف حساب
-                    </button>
                 </div>
             </div>
         </section>
@@ -141,9 +159,13 @@
                 <button class="btn btn-small btn-secondary full-width" onclick="showPage('customers')">
                     <i class="fas fa-arrow-right"></i> رجوع للقائمة
                 </button>
-                </div>
+            </div>
             
             <div class="card details-card" id="details-container"></div>
+            
+            <button class="btn btn-warning full-width mb-10" onclick="openEditModal()">
+                <i class="fas fa-edit"></i> تعديل البيانات
+            </button>
 
             <h3 class="section-title">سجل الحركات</h3>
             <div id="transactions-list" class="list-container"></div>
@@ -175,6 +197,51 @@
 
     </main>
 
+    <div id="edit-modal" class="modal hidden">
+        <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
+            <span class="close" onclick="document.getElementById('edit-modal').classList.add('hidden')">&times;</span>
+            <h3>تعديل البيانات</h3>
+            
+            <div class="form-group">
+                <label>اسم الزبون</label>
+                <input type="text" id="edit-name">
+            </div>
+            <div class="form-group">
+                <label>نوع السيارة</label>
+                <input type="text" id="edit-car">
+            </div>
+            <div class="form-group">
+                <label>الهاتف</label>
+                <input type="tel" id="edit-phone">
+            </div>
+            
+            <div class="form-group">
+                <label>إدارة الصور</label>
+                <div id="edit-images-list" class="image-edit-grid"></div>
+                <label style="margin-top:10px">إضافة صور جديدة</label>
+                <input type="file" id="edit-new-images" multiple accept="image/*">
+            </div>
+
+            <div class="row" style="display:flex; gap:10px">
+                <div class="form-group full-width">
+                    <label>الدين الكلي</label>
+                    <input type="number" id="edit-total" step="any">
+                </div>
+                <div class="form-group full-width">
+                    <label>مجموع الواصل</label>
+                    <input type="number" id="edit-paid" step="any">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>ملاحظات</label>
+                <textarea id="edit-notes" rows="3"></textarea>
+            </div>
+
+            <button id="btn-save-edit" class="btn btn-success full-width" onclick="saveEditCustomer()">حفظ التعديلات</button>
+        </div>
+    </div>
+
     <nav class="bottom-nav">
         <a href="#" class="nav-item active" onclick="showPage('add'); return false;">
             <i class="fas fa-plus-circle"></i>
@@ -190,27 +257,13 @@
         </a>
     </nav>
 
-    <div id="print-modal" class="modal hidden">
-        <div class="modal-content">
-            <h3>تجهيز الفاتورة</h3>
-            <div class="form-group">
-                <label>اسم المكتب / المعرض</label>
-                <input type="text" id="print-office-input" placeholder="اسم مكتبك هنا...">
-            </div>
-            <div class="form-group">
-                <label>ملاحظة أسفل الفاتورة</label>
-                <textarea id="print-note-input" rows="2">شكراً لتعاملكم معنا.</textarea>
-            </div>
-            <div class="row" style="display:flex; gap:10px;">
-                <button class="btn btn-secondary full-width" onclick="document.getElementById('print-modal').classList.add('hidden')">إلغاء</button>
-                <button class="btn btn-primary full-width" onclick="executePrint()">طباعة الآن 🖨️</button>
-            </div>
-        </div>
-    </div>
-
     <div id="print-area" class="print-only"></div>
 
     <div id="toast" class="toast">تم التنفيذ</div>
+    <div id="loader" class="loader-overlay hidden">
+        <div class="loader"></div>
+        <p style="margin-top:10px; color:white">جاري الرفع والحفظ...</p>
+    </div>
 
     <script>
         if ('serviceWorker' in navigator) {
