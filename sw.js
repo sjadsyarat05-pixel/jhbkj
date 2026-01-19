@@ -27,6 +27,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
     if (event.request.url.includes('firebase')) return; 
+    if (event.request.url.includes('cloudinary')) return; // عدم تخزين الصور مؤقتاً لتجنب مشاكل الكاش
     event.respondWith(
         caches.match(event.request).then((res) => res || fetch(event.request))
     );
