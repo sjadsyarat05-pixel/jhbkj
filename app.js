@@ -1,8 +1,8 @@
 // استيراد الدوال اللازمة من Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
-import { getDatabase, ref, set, push, onValue, update, remove, get, child } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+import { getDatabase, ref, set, onValue, get, child } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
 // إعدادات المشروع الخاص بك
 const firebaseConfig = {
@@ -42,18 +42,16 @@ let currentEditingCustomerId = null;
 
 // --- عند التشغيل ---
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. محاولة تحميل مبدئي من LocalStorage للسرعة
+    // 1. تحميل مبدئي محلي
     const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (localData) {
-        try {
-            currentState = JSON.parse(localData);
-            updateUI();
-        } catch (e) { console.error("Error parsing local data", e); }
+        try { currentState = JSON.parse(localData); updateUI(); } 
+        catch (e) { console.error(e); }
     }
 
-    // 2. التحميل الحقيقي من Firebase (أهم خطوة)
-    setupRealtimeListener(); // استماع للتغييرات
-    loadDataFromFirebase();  // جلب البيانات مرة واحدة عند الفتح
+    // 2. تحميل من فايربيس
+    loadDataFromFirebase();
+    setupRealtimeListener();
 
     // 3. حالة الشبكة
     updateOnlineStatus();
@@ -61,21 +59,24 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('offline', updateOnlineStatus);
 });
 
-// دالة جديدة لجلب البيانات فوراً عند الفتح
+// دالة جلب البيانات مع فحص الصلاحيات
 function loadDataFromFirebase() {
     const dbRef = ref(db);
     get(child(dbRef, `debt_system_data`)).then((snapshot) => {
         if (snapshot.exists()) {
-            console.log("Data loaded from Firebase");
+            console.log("✅ تم جلب البيانات من السحابة");
             currentState = snapshot.val();
             if (!currentState.customers) currentState.customers = [];
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentState));
             updateUI();
         } else {
-            console.log("No data available in Firebase");
+            console.log("ℹ️ قاعدة البيانات فارغة أو جديدة");
         }
     }).catch((error) => {
-        console.error("Firebase Get Error:", error);
+        console.error("❌ خطأ في جلب البيانات:", error);
+        if (error.code === 'PERMISSION_DENIED') {
+            alert("تنبيه: صلاحيات قاعدة البيانات مغلقة! يجب تعديل Rules في Firebase إلى true.");
+        }
     });
 }
 
@@ -89,9 +90,19 @@ function setupRealtimeListener() {
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentState));
             updateUI();
         }
-    }, (error) => {
-        console.error("Firebase Realtime Error:", error);
     });
+}
+
+function saveData() {
+    // حفظ محلي
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentState));
+    
+    // حفظ سحابي
+    if (navigator.onLine) {
+        set(ref(db, 'debt_system_data'), currentState)
+            .then(() => console.log("Data saved to cloud"))
+            .catch((err) => console.error("Cloud Save Error:", err));
+    }
 }
 
 function updateUI() {
@@ -107,8 +118,6 @@ function updateOnlineStatus() {
     if (navigator.onLine) {
         statusEl.className = 'status-indicator online';
         if(syncText) syncText.innerText = "✅ متصل بالسحابة (Online)";
-        // محاولة مزامنة إذا عاد الاتصال
-        loadDataFromFirebase();
     } else {
         statusEl.className = 'status-indicator offline';
         if(syncText) syncText.innerText = "⚠️ وضع عدم الاتصال (Offline)";
@@ -138,6 +147,13 @@ async function uploadFileToCloudinary(file) {
         console.error("Upload Error:", error);
         return null;
     }
+}
+
+function showToast(msg) {
+    const x = document.getElementById("toast");
+    x.innerText = msg;
+    x.className = "toast show";
+    setTimeout(() => { x.className = x.className.replace("show", ""); }, 3000);
 }
 
 // --- الأمان ---
@@ -174,31 +190,6 @@ function showPage(pageId) {
 
     if(pageId === 'customers') renderCustomers();
     if(pageId === 'payments') renderPaymentClients();
-}
-
-// دالة الحفظ المعدلة لضمان الإرسال لفايربيس
-function saveData() {
-    // 1. حفظ محلي
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentState));
-    
-    // 2. حفظ سحابي
-    if (navigator.onLine) {
-        set(ref(db, 'debt_system_data'), currentState)
-            .then(() => console.log("Data saved to Firebase successfully"))
-            .catch((err) => {
-                console.error("Cloud Save Error", err);
-                alert("خطأ في الحفظ السحابي: " + err.message);
-            });
-    } else {
-        console.warn("Offline: Data saved locally only.");
-    }
-}
-
-function showToast(msg) {
-    const x = document.getElementById("toast");
-    x.innerText = msg;
-    x.className = "toast show";
-    setTimeout(() => { x.className = x.className.replace("show", ""); }, 3000);
 }
 
 // --- إضافة زبون جديد ---
@@ -256,7 +247,7 @@ async function addCustomer() {
     if (!currentState.customers) currentState.customers = [];
     currentState.customers.push(newCustomer);
     
-    saveData(); // الحفظ هنا مهم
+    saveData();
     showLoader(false);
     showToast("تمت الإضافة بنجاح ✅");
     
@@ -360,7 +351,6 @@ function loadCustomerDetails(id) {
     showPage('details');
 }
 
-// --- قسم التسديد والطباعة ---
 function renderPaymentClients() {
     const list = document.getElementById('payment-clients-list');
     const query = document.getElementById('search-payment-client').value.toLowerCase();
